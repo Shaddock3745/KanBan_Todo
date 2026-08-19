@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>Kanban 待辦事項清單</title>
+    <style>
+        :root {
+          --todo-color: #e74c3c;
+          --progress-color: #f39c12;
+          --done-color: #27ae60;
+          --bg: #f4f5f7;
+        }
+        * { box-sizing: border-box; }
+        body {
+          font-family: -apple-system, "Microsoft JhengHei", sans-serif;
+          background: var(--bg);
+          margin: 0;
+          padding: 24px;
+          color: #172b4d;
+        }
+        h1 { margin-bottom: 20px; }
+
+        #new-task-form {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 24px;
+        }
+        #new-task-form input {
+          padding: 10px;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+        #new-task-form input[name="title"] { flex: 1; }
+        #new-task-form input[name="description"] { flex: 2; }
+        #new-task-form button {
+          padding: 10px 20px;
+          background: #0052cc;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+
+        .board {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+        }
+        .column {
+          background: #ebecf0;
+          border-radius: 8px;
+          padding: 12px;
+          min-height: 400px;
+        }
+        .column h2 {
+          font-size: 15px;
+          margin: 0 0 12px 4px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .todo .dot { background: var(--todo-color); }
+        .progress .dot { background: var(--progress-color); }
+        .done .dot { background: var(--done-color); }
+
+        .card {
+          background: white;
+          border-radius: 6px;
+          padding: 10px 12px;
+          margin-bottom: 10px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+        }
+        .card h3 { margin: 0 0 4px 0; font-size: 14px; }
+        .card p { margin: 0 0 8px 0; font-size: 12px; color: #5e6c84; white-space: pre-wrap; }
+        .card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .card-actions button {
+          font-size: 11px;
+          padding: 4px 8px;
+          border: 1px solid #dfe1e6;
+          background: #fafbfc;
+          border-radius: 3px;
+          cursor: pointer;
+        }
+        .card-actions button.delete { color: #de350b; }
+
+        .priority { padding:2px 8px; border-radius: 3px; font-size: 11px; color: white; }
+        .priority.LOW { background: #27ae60; }
+        .priority.MEDIUM { background: #f39c12; }
+        .priority.HIGH { background: #e74c3c; }
+    </style>
+</head>
+<body>
+
+<h1>📋 待辦事項看板</h1>
+
+<form id="new-task-form">
+    <input type="text" name="title" placeholder="任務標題" required>
+    <input type="text" name="description" placeholder="說明（選填）">
+    <select name="priority">
+        <option value="LOW">低</option>
+        <option value="MEDIUM">中</option>
+        <option value="HIGH">高</option>
+    </select>
+    <button type="submit">＋ 新增任務</button>
+</form>
+
+<div class="board">
+    <div class="column todo">
+        <h2><span class="dot"></span>待辦 TODO</h2>
+        <div class="cards" id="col-TODO"></div>
+    </div>
+    <div class="column progress">
+        <h2><span class="dot"></span>進行中 IN_PROGRESS</h2>
+        <div class="cards" id="col-IN_PROGRESS"></div>
+    </div>
+    <div class="column done">
+        <h2><span class="dot"></span>已完成 DONE</h2>
+        <div class="cards" id="col-DONE"></div>
+    </div>
+</div>
+
+<script>
+    const API = '/api/tasks';
+
+    async function loadTasks() {
+      const res = await fetch(API);
+      const tasks = await res.json();
+
+      const priorityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+      tasks.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+      ['TODO', 'IN_PROGRESS', 'DONE'].forEach(status => {
+        document.getElementById('col-' + status).innerHTML = '';
+      });
+
+      tasks.forEach(task => {
+        const col = document.getElementById('col-' + task.status);
+        col.appendChild(renderCard(task));
+      });
+    }
+
+    function renderCard(task) {
+      const div = document.createElement('div');
+      div.className = 'card';
+
+      const nextStatus = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: 'TODO' };
+      const nextLabel = { TODO: '➡ 開始', IN_PROGRESS: '✔ 完成', DONE: '↩ 重開' };
+
+      const priorityLabel = { LOW: '低', MEDIUM: '中', HIGH: '高' };
+
+      div.innerHTML = `
+        <h3>${escapeHtml(task.title)} <span class="priority ${task.priority}">${priorityLabel[task.priority]}</span></h3>
+        <p>${escapeHtml(task.description || '')}</p>
+        <div class="card-actions">
+          <button onclick="moveTask(${task.id}, '${nextStatus[task.status]}')">${nextLabel[task.status]}</button>
+          <button class="delete" onclick="deleteTask(${task.id})">🗑 刪除</button>
+        </div>
+      `;
+      return div;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    async function moveTask(id, newStatus) {
+      const res = await fetch(API + '/' + id);
+      const task = await res.json();
+      await fetch(API + '/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: task.title, description: task.description, status: newStatus })
+      });
+      loadTasks();
+    }
+
+    async function deleteTask(id) {
+      if (!confirm('確定刪除這筆任務？')) return;
+      await fetch(API + '/' + id, { method: 'DELETE' });
+      loadTasks();
+    }
+
+    document.getElementById('new-task-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const title = form.title.value.trim();
+      const description = form.description.value.trim();
+      const priority = form.priority.value;
+      if (!title) return;
+
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, status: 'TODO', priority })
+      });
+
+      form.reset();
+      loadTasks();
+    });
+
+    loadTasks();
+</script>
+
+</body>
+</html>
