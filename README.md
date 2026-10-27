@@ -99,6 +99,8 @@ Request body 範例：
    mvn spring-boot:run
    ```
 
+   使用 IntelliJ IDEA 的話，File → Open 選擇 `pom.xml` 以 Maven 專案開啟，直接執行 `KanbanTodoApplication` 即可，不用另外安裝 Maven。
+
 4. 開啟瀏覽器前往 <http://localhost:8080>
 
 ## 專案結構
